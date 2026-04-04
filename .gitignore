@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Данные и модели
+data/
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+
+# LoRA адаптеры и чекпоинты обучения
+tolkien_lora/
+tolkien_lora_adapter/
+tolkien_gguf/
+runs/
+
+# Переменные окружения
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
