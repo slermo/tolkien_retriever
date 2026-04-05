@@ -13,7 +13,6 @@ def ingest():
     embedder = Embedder()
     db = QdrantDB()
 
-    # Создаём коллекцию с нужной размерностью
     db.create_collection(vector_size=embedder.dimension)
 
     point_id = 0
@@ -27,7 +26,6 @@ def ingest():
         chunks = chunker.chunk(text, source=source)
         print(f"{source}: {len(chunks)} chunks")
 
-        # Загружаем батчами
         for i in tqdm(range(0, len(chunks), BATCH_SIZE), desc=f"Uploading {source}"):
             batch = chunks[i : i + BATCH_SIZE]
 
