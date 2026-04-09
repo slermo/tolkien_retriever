@@ -15,7 +15,8 @@ class OpenRouterLLM(BaseLLM):
         self.api_key = os.getenv("OPENROUTER_API_KEY")
         self.url = "https://openrouter.ai/api/v1/chat/completions"
 
-    def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
+    def chat(self, messages: list[dict], temperature: float = 0.7) -> tuple[str, dict]:
+        """Returns (response_text, usage_metadata)."""
         for attempt in range(MAX_RETRIES):
             resp = requests.post(
                 self.url,
@@ -36,5 +37,12 @@ class OpenRouterLLM(BaseLLM):
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            usage = data.get("usage", {})
+            return content, {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+                "model": self.model,
+            }
         raise RuntimeError(f"OpenRouter: {MAX_RETRIES} попыток исчерпано")

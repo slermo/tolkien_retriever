@@ -1,5 +1,6 @@
 import re
 from src.llm.base import BaseLLM
+from src.llm.tracing import get_langfuse
 from src.pipeline.embedder import Embedder
 from src.pipeline.reranker import Reranker
 from src.pipeline.sparse_encoder import SparseEncoder
@@ -49,7 +50,12 @@ class ReActAgent:
             self._all_chunks.extend(chunker.chunk(text, source=source))
         self.sparse_encoder.fit([c.text for c in self._all_chunks])
 
-    def _search(self, query: str, top_k: int = 5, retrieve: int = 20) -> str:
+    def _search(self, query: str, top_k: int = 5, retrieve: int = 20, trace_span=None) -> str:
+        # Retrieval span
+        retrieval_span = None
+        if trace_span:
+            retrieval_span = trace_span.span(name="retrieval", input={"query": query})
+
         dense_vec = self.embedder.embed_query(query)
         dense_results = self.db.search(dense_vec, limit=retrieve)
         bm25_results = self.sparse_encoder.search(query, limit=retrieve)
@@ -77,9 +83,22 @@ class ReActAgent:
         parts = []
         for i, r in enumerate(reranked):
             parts.append(f"[{i+1}] ({r['source']}) {r['text']}")
-        return "\n\n".join(parts)
+        observation = "\n\n".join(parts)
+
+        if retrieval_span:
+            retrieval_span.end(output={
+                "num_results": len(reranked),
+                "top_rerank_score": reranked[0]["rerank_score"] if reranked else 0,
+            })
+
+        return observation
 
     def run(self, question: str, verbose: bool = False) -> str:
+        langfuse = get_langfuse()
+        trace = None
+        if langfuse:
+            trace = langfuse.trace(name="react_agent", input={"question": question})
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": question},
@@ -88,8 +107,26 @@ class ReActAgent:
         full_response = ""
 
         for step in range(MAX_STEPS):
-            response = self.llm.chat(messages, temperature=0.3)
+            # LLM generation span
+            generation = None
+            if trace:
+                generation = trace.generation(
+                    name=f"llm_step_{step + 1}",
+                    input=messages,
+                    model=getattr(self.llm, "model", "unknown"),
+                )
+
+            response, usage = self.llm.chat(messages, temperature=0.3)
             full_response += response
+
+            if generation:
+                generation.end(
+                    output=response,
+                    usage={
+                        "input": usage.get("input_tokens", 0),
+                        "output": usage.get("output_tokens", 0),
+                    },
+                )
 
             if verbose:
                 print(f"\n--- Step {step + 1} ---")
@@ -100,14 +137,18 @@ class ReActAgent:
             action_match = ACTION_PATTERN.search(response)
 
             if answer_match and not action_match:
-                return answer_match.group(1).strip()
+                answer = answer_match.group(1).strip()
+                if trace:
+                    trace.update(output={"answer": answer, "steps": step + 1})
+                    langfuse.flush()
+                return answer
 
             if action_match:
                 query = action_match.group(1)
                 if verbose:
                     print(f"\n🔍 Searching: {query}")
 
-                observation = self._search(query)
+                observation = self._search(query, trace_span=trace)
 
                 if verbose:
                     print(f"📄 Found {len(observation.split('['))-1} results")
@@ -116,19 +157,44 @@ class ReActAgent:
                 messages.append({"role": "user", "content": f"Observation:\n{observation}"})
                 full_response += f"\nObservation:\n{observation}\n"
             else:
-                # No action and no clear answer — return what we have
+                if trace:
+                    trace.update(output={"answer": response.strip(), "steps": step + 1})
+                    langfuse.flush()
                 return response.strip()
 
-        # Max steps reached — ask for final answer
+        # Max steps reached
         messages.append({
             "role": "user",
             "content": "Пожалуйста, сформулируй финальный ответ на основе найденной информации. Начни с 'Answer:'"
         })
-        response = self.llm.chat(messages, temperature=0.3)
+
+        generation = None
+        if trace:
+            generation = trace.generation(
+                name="llm_final",
+                input=messages,
+                model=getattr(self.llm, "model", "unknown"),
+            )
+
+        response, usage = self.llm.chat(messages, temperature=0.3)
+
+        if generation:
+            generation.end(
+                output=response,
+                usage={
+                    "input": usage.get("input_tokens", 0),
+                    "output": usage.get("output_tokens", 0),
+                },
+            )
+
         answer_match = ANSWER_PATTERN.search(response)
-        if answer_match:
-            return answer_match.group(1).strip()
-        return response.strip()
+        answer = answer_match.group(1).strip() if answer_match else response.strip()
+
+        if trace:
+            trace.update(output={"answer": answer, "steps": MAX_STEPS})
+            langfuse.flush()
+
+        return answer
 
 
 if __name__ == "__main__":
