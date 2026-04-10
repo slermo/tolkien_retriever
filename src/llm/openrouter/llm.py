@@ -10,7 +10,7 @@ MAX_RETRIES = 5
 
 
 class OpenRouterLLM(BaseLLM):
-    def __init__(self, model: str = "qwen/qwen3.6-plus:free"):
+    def __init__(self, model: str = "qwen/qwen3-next-80b-a3b-instruct:free"):
         self.model = model
         self.api_key = os.getenv("OPENROUTER_API_KEY")
         self.url = "https://openrouter.ai/api/v1/chat/completions"

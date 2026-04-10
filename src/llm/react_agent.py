@@ -198,7 +198,7 @@ class ReActAgent:
 
 
 if __name__ == "__main__":
-    from src.llm.openrouter_llm import OpenRouterLLM
+    from src.llm.openrouter.llm import OpenRouterLLM
 
     llm = OpenRouterLLM()
     agent = ReActAgent(llm)

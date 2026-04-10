@@ -4,7 +4,7 @@ from trl import SFTTrainer
 from transformers import TrainingArguments
 from unsloth import FastLanguageModel
 
-from src.llm.model import load_base_model, attach_lora, MAX_SEQ_LENGTH
+from src.llm.local.model import load_base_model, attach_lora, MAX_SEQ_LENGTH
 
 DATA_DIR = "data/cleaned"
 OUTPUT_DIR = "tolkien_lora"

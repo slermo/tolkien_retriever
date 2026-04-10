@@ -12,7 +12,7 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "qwen/qwen3.6-plus:free"
+MODEL = "meta-llama/llama-3.2-3b-instruct:free"
 # MODEL = "google/gemma-3n-e2b-it:free"
 
 DATA_DIR = "data/cleaned"

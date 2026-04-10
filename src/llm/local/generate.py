@@ -1,7 +1,8 @@
 from src.pipeline.embedder import Embedder
 from src.pipeline.reranker import Reranker
 from src.qdrant.qdrant import QdrantDB
-from src.llm.model import load_for_inference
+from src.llm.base import BaseLLM
+from src.llm.local.llm import LocalLLM
 
 SYSTEM_PROMPT = (
     "Ты — рассказчик в стиле Дж. Р. Р. Толкина. "
@@ -11,11 +12,11 @@ SYSTEM_PROMPT = (
 
 
 class RAGPipeline:
-    def __init__(self, adapter_path: str = "tolkien_lora_adapter"):
+    def __init__(self, llm: BaseLLM | None = None, adapter_path: str = "tolkien_lora_adapter"):
         self.embedder = Embedder()
         self.reranker = Reranker()
         self.db = QdrantDB()
-        self.model, self.tokenizer = load_for_inference(adapter_path)
+        self.llm = llm or LocalLLM(adapter_path=adapter_path)
 
     def retrieve(self, query: str, top_k: int = 5, retrieve: int = 20) -> list[dict]:
         vector = self.embedder.embed_query(query)
@@ -32,7 +33,6 @@ class RAGPipeline:
         self,
         query: str,
         top_k: int = 5,
-        max_new_tokens: int = 512,
         temperature: float = 0.7,
     ) -> str:
         contexts = self.retrieve(query, top_k=top_k)
@@ -42,18 +42,8 @@ class RAGPipeline:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
-        input_ids = self.tokenizer.apply_chat_template(
-            messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
-        ).to(self.model.device)
-
-        output = self.model.generate(
-            input_ids,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=temperature,
-        )
-        generated = output[0][input_ids.shape[1]:]
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        text, _ = self.llm.chat(messages, temperature=temperature)
+        return text
 
 
 if __name__ == "__main__":
